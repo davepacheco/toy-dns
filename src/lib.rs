@@ -3,6 +3,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 mod dns_data;
+pub mod dns_server;
 pub mod dropshot_server;
 
 #[derive(Deserialize, Debug)]
@@ -14,14 +15,14 @@ pub struct Config {
 
 pub async fn start_server(
     config: Config,
+    log: slog::Logger,
+    db: Arc::<sled::Db>,
 ) -> Result<dropshot::HttpServer<Arc<dropshot_server::Context>>, anyhow::Error>
 {
-    let log =
-        config.log.to_logger("toy-dns").context("failed to create logger")?;
-
     let data_client = dns_data::Client::new(
         log.new(slog::o!("component" => "DataClient")),
         &config.data,
+        db,
     );
 
     let api = dropshot_server::api();
