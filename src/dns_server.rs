@@ -128,18 +128,18 @@ async fn handle_req<'a, 'b, 'c>(
         }
         DnsRecord::SRV(prio, weight, port, target) => {
             let mut srv = Record::new();
-            let name = match Name::from_str(&target) {
-                Ok(name) => name,
+            let tgt = match Name::from_str(&target) {
+                Ok(tgt) => tgt,
                 Err(e) => {
                     error!(log, "srv target: '{}' {}", target, e);
                     nack(&log, &mr, &socket, &header, &src).await;
                     return;
                 }
             };
-            srv.set_name(name.clone())
+            srv.set_name(name)
                 .set_rr_type(RecordType::SRV)
                 .set_data(
-                    Some(RData::SRV(SRV::new(prio, weight, port, name)))
+                    Some(RData::SRV(SRV::new(prio, weight, port, tgt)))
                 );
 
             let mresp = rb.build(
