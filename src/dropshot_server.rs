@@ -17,12 +17,9 @@ impl Context {
 pub fn api() -> dropshot::ApiDescription<Arc<Context>> {
     let mut api = dropshot::ApiDescription::new();
 
-    // XXX
-    // api.register(dns_zone_put).unwrap();
-    // api.register(dns_record_put).unwrap();
-    api.register(dns_records_get).unwrap(); // XXX unwrap
-    api.register(dns_records_set).unwrap(); // XXX unwrap
-    api.register(dns_records_delete).unwrap(); // XXX unwrap
+    api.register(dns_records_get).expect("register dns_records_get");
+    api.register(dns_records_set).expect("register dns_records_set");
+    api.register(dns_records_delete).expect("register dns_records_delete");
     api
 }
 
