@@ -1,10 +1,6 @@
 //! Dropshot server for configuring DNS namespace
 
-use crate::dns_data::{
-    self,
-    DnsRecordKey,
-    DnsRecord,
-};
+use crate::dns_data::{self, DnsRecord, DnsRecordKey};
 use dropshot::endpoint;
 use std::sync::Arc;
 
@@ -37,19 +33,14 @@ pub fn api() -> dropshot::ApiDescription<Arc<Context>> {
 async fn dns_records_get(
     rqctx: Arc<dropshot::RequestContext<Arc<Context>>>,
 ) -> Result<
-        dropshot::HttpResponseOk<Vec<(DnsRecordKey,DnsRecord)>>,
-        dropshot::HttpError
-    > 
-{
+    dropshot::HttpResponseOk<Vec<(DnsRecordKey, DnsRecord)>>,
+    dropshot::HttpError,
+> {
     let apictx = rqctx.context();
     // XXX record key
-    let records = apictx
-        .client
-        .get_records(None)
-        .await
-        .map_err(|e| {
-            dropshot::HttpError::for_internal_error(format!("uh oh: {:?}", e))
-        })?;
+    let records = apictx.client.get_records(None).await.map_err(|e| {
+        dropshot::HttpError::for_internal_error(format!("uh oh: {:?}", e))
+    })?;
     Ok(dropshot::HttpResponseOk(records))
 }
 
@@ -62,13 +53,9 @@ async fn dns_records_set(
     rq: dropshot::TypedBody<Vec<(DnsRecordKey, DnsRecord)>>,
 ) -> Result<dropshot::HttpResponseOk<()>, dropshot::HttpError> {
     let apictx = rqctx.context();
-    apictx
-        .client
-        .set_records(rq.into_inner())
-        .await
-        .map_err(|e| {
-            dropshot::HttpError::for_internal_error(format!("uh oh: {:?}", e))
-        })?;
+    apictx.client.set_records(rq.into_inner()).await.map_err(|e| {
+        dropshot::HttpError::for_internal_error(format!("uh oh: {:?}", e))
+    })?;
     Ok(dropshot::HttpResponseOk(()))
 }
 
@@ -81,12 +68,8 @@ async fn dns_records_delete(
     rq: dropshot::TypedBody<Vec<DnsRecordKey>>,
 ) -> Result<dropshot::HttpResponseOk<()>, dropshot::HttpError> {
     let apictx = rqctx.context();
-    apictx
-        .client
-        .delete_records(rq.into_inner())
-        .await
-        .map_err(|e| {
-            dropshot::HttpError::for_internal_error(format!("uh oh: {:?}", e))
-        })?;
+    apictx.client.delete_records(rq.into_inner()).await.map_err(|e| {
+        dropshot::HttpError::for_internal_error(format!("uh oh: {:?}", e))
+    })?;
     Ok(dropshot::HttpResponseOk(()))
 }

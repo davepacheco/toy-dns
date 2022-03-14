@@ -17,7 +17,7 @@ pub struct Config {
 pub async fn start_server(
     config: Config,
     log: slog::Logger,
-    db: Arc::<sled::Db>,
+    db: Arc<sled::Db>,
 ) -> Result<dropshot::HttpServer<Arc<dropshot_server::Context>>, anyhow::Error>
 {
     let data_client = dns_data::Client::new(
