@@ -115,7 +115,6 @@ async fn handle_req<'a, 'b, 'c>(
                 Ok(_) => {}
                 Err(e) => {
                     error!(log, "send: {}", e);
-                    return;
                 }
             }
         }
@@ -149,7 +148,6 @@ async fn handle_req<'a, 'b, 'c>(
                 Ok(_) => {}
                 Err(e) => {
                     error!(log, "send: {}", e);
-                    return;
                 }
             }
         }
@@ -163,7 +161,7 @@ async fn nack(
     header: &Header,
     src: &SocketAddr,
 ) {
-    let rb = MessageResponseBuilder::from_message_request(&mr);
+    let rb = MessageResponseBuilder::from_message_request(mr);
     let mresp = rb.build_no_records(*header);
     let mut resp_data = Vec::new();
     let mut enc = BinEncoder::new(&mut resp_data);
@@ -178,7 +176,6 @@ async fn nack(
         Ok(_) => {}
         Err(e) => {
             error!(log, "destructive emit: {}", e);
-            return;
         }
     }
 }

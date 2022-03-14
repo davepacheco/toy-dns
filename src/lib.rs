@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity)]
+
 use anyhow::Context;
 use serde::Deserialize;
 use std::sync::Arc;

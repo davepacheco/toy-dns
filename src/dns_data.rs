@@ -29,6 +29,7 @@ impl Default for Config {
     }
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub enum DnsRecord {
     AAAA(Ipv6Addr),
@@ -54,12 +55,9 @@ pub enum DnsCmd {
     // XXX
     // MakeExist(DnsRecord, DnsResponse<()>),
     // MakeGone(DnsRecordKey, DnsResponse<()>),
-    GetRecords(
-        Option<DnsRecordKey>,
-        DnsResponse<Vec<(DnsRecordKey, DnsRecord)>>,
-    ),
-    SetRecords(Vec<(DnsRecordKey, DnsRecord)>, DnsResponse<()>),
-    DeleteRecords(Vec<DnsRecordKey>, DnsResponse<()>),
+    Get(Option<DnsRecordKey>, DnsResponse<Vec<(DnsRecordKey, DnsRecord)>>),
+    Set(Vec<(DnsRecordKey, DnsRecord)>, DnsResponse<()>),
+    Delete(Vec<DnsRecordKey>, DnsResponse<()>),
 }
 
 /// Data model client
@@ -96,7 +94,7 @@ impl Client {
         slog::trace!(&self.log, "get_records"; "key" => ?key);
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.sender
-            .try_send(DnsCmd::GetRecords(key, DnsResponse { tx }))
+            .try_send(DnsCmd::Get(key, DnsResponse { tx }))
             .context("send message")?;
         rx.await.context("recv response")
     }
@@ -109,7 +107,7 @@ impl Client {
         slog::trace!(&self.log, "set_records"; "records" => ?records);
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.sender
-            .try_send(DnsCmd::SetRecords(records, DnsResponse { tx }))
+            .try_send(DnsCmd::Set(records, DnsResponse { tx }))
             .context("send message")?;
         rx.await.context("recv response")
     }
@@ -122,7 +120,7 @@ impl Client {
         slog::trace!(&self.log, "delete_records"; "records" => ?records);
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.sender
-            .try_send(DnsCmd::DeleteRecords(records, DnsResponse { tx }))
+            .try_send(DnsCmd::Delete(records, DnsResponse { tx }))
             .context("send message")?;
         rx.await.context("recv response")
     }
@@ -143,13 +141,13 @@ async fn data_server(mut server: Server) {
 
         trace!(log, "rx message"; "message" => ?msg);
         match msg {
-            DnsCmd::GetRecords(key, response) => {
+            DnsCmd::Get(key, response) => {
                 server.cmd_get_records(key, response).await;
             }
-            DnsCmd::SetRecords(records, response) => {
+            DnsCmd::Set(records, response) => {
                 server.cmd_set_records(records, response).await;
             }
-            DnsCmd::DeleteRecords(records, response) => {
+            DnsCmd::Delete(records, response) => {
                 server.cmd_delete_records(records, response).await;
             }
         }
