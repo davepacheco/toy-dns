@@ -3,6 +3,8 @@ use std::io::Result;
 use std::str::FromStr;
 use std::net::SocketAddr;
 
+
+use serde::{Deserialize};
 use tokio::net::UdpSocket;
 use pretty_hex::*;
 use slog::{Logger, error};
@@ -22,9 +24,18 @@ use trust_dns_proto::rr::record_data::RData;
 use trust_dns_proto::rr::record_type::RecordType;
 use crate::dns_data::DnsRecord;
 
-pub async fn run(log: Logger, db: Arc::<sled::Db>) -> Result<()> {
+/// Configuration related to the DNS server
+#[derive(Deserialize, Debug, Clone)]
+pub struct Config {
+    /// The address to listen for DNS requests on
+    bind_address: String,
+}
 
-    let socket = Arc::new(UdpSocket::bind("::1:4753").await?);
+pub async fn run(log: Logger, db: Arc::<sled::Db>, config: Config) -> Result<()> {
+
+    let socket = Arc::new(
+        UdpSocket::bind(config.bind_address).await?
+    );
 
     loop {
 

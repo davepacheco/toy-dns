@@ -32,13 +32,16 @@ async fn main() -> Result<(), anyhow::Error> {
         .to_logger("toy-dns")
         .context("failed to create logger")?;
 
-    let db = Arc::new(sled::open("/tmp/toy-dns-db")?);
+    let db = Arc::new(sled::open(&config.data.storage_path)?);
 
     {
         let db = db.clone();
         let log = log.clone();
+        let config = config.dns.clone();
 
-        tokio::spawn(async move { toy_dns::dns_server::run(log, db).await });
+        tokio::spawn(async move {
+            toy_dns::dns_server::run(log, db, config).await 
+        });
     }
 
     let server = toy_dns::start_server(config, log, db).await?;

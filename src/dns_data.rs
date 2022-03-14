@@ -11,7 +11,10 @@ use std::sync::Arc;
 #[derive(Deserialize, Debug)]
 pub struct Config {
     /// maximum number of channel messages to buffer
-    nmax_messages: usize,
+    pub nmax_messages: usize,
+
+    /// The path for the embedded kv store
+    pub storage_path: String,
 }
 
 /// default maximum number of messages to buffer
@@ -19,11 +22,13 @@ const NMAX_MESSAGES_DEFAULT: usize = 16;
 
 impl Default for Config {
     fn default() -> Self {
-        Config { nmax_messages: NMAX_MESSAGES_DEFAULT }
+        Config {
+            nmax_messages: NMAX_MESSAGES_DEFAULT,
+            storage_path: ".".into(),
+        }
     }
 }
 
-// XXX
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub enum DnsRecord {
     AAAA(Ipv6Addr),
