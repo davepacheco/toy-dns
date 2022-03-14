@@ -10,6 +10,7 @@ use anyhow::anyhow;
 use anyhow::Context;
 use clap::Parser;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -27,7 +28,20 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_context(|| format!("parse config file {:?}", config_file))?;
     eprintln!("{:?}", config);
 
-    let server = toy_dns::start_server(config).await?;
+    let log = config.log
+        .to_logger("toy-dns")
+        .context("failed to create logger")?;
+
+    let db = Arc::new(sled::open("/tmp/toy-dns-db")?);
+
+    {
+        let db = db.clone();
+        let log = log.clone();
+
+        tokio::spawn(async move { toy_dns::dns_server::run(log, db).await });
+    }
+
+    let server = toy_dns::start_server(config, log, db).await?;
     server
         .await
         .map_err(|error_message| anyhow!("server exiting: {}", error_message))
