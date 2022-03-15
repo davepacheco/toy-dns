@@ -1,34 +1,35 @@
-use std::sync::Arc;
 use std::io::Result;
-use std::str::FromStr;
 use std::net::SocketAddr;
+use std::str::FromStr;
+use std::sync::Arc;
 
-use tokio::net::UdpSocket;
+use crate::dns_data::DnsRecord;
 use pretty_hex::*;
-use slog::{Logger, error};
+use serde::Deserialize;
+use slog::{error, Logger};
+use tokio::net::UdpSocket;
 use trust_dns_proto::op::header::Header;
-use trust_dns_proto::serialize::binary::{
-    BinDecoder,
-    BinDecodable,
-    BinEncoder,
-};
-use trust_dns_server::authority::{
-    MessageResponseBuilder,
-    MessageRequest,
-};
-use trust_dns_proto::rr::{Record, Name};
 use trust_dns_proto::rr::rdata::SRV;
 use trust_dns_proto::rr::record_data::RData;
 use trust_dns_proto::rr::record_type::RecordType;
-use crate::dns_data::DnsRecord;
+use trust_dns_proto::rr::{Name, Record};
+use trust_dns_proto::serialize::binary::{
+    BinDecodable, BinDecoder, BinEncoder,
+};
+use trust_dns_server::authority::{MessageRequest, MessageResponseBuilder};
 
-pub async fn run(log: Logger, db: Arc::<sled::Db>) -> Result<()> {
+/// Configuration related to the DNS server
+#[derive(Deserialize, Debug, Clone)]
+pub struct Config {
+    /// The address to listen for DNS requests on
+    bind_address: String,
+}
 
-    let socket = Arc::new(UdpSocket::bind("::1:4753").await?);
+pub async fn run(log: Logger, db: Arc<sled::Db>, config: Config) -> Result<()> {
+    let socket = Arc::new(UdpSocket::bind(config.bind_address).await?);
 
     loop {
-
-        let mut buf = vec![0u8;16384];
+        let mut buf = vec![0u8; 16384];
         let (n, src) = socket.recv_from(&mut buf).await?;
         buf.resize(n, 0);
 
@@ -36,21 +37,19 @@ pub async fn run(log: Logger, db: Arc::<sled::Db>) -> Result<()> {
         let log = log.clone();
         let db = db.clone();
 
-        tokio::spawn(async move { handle_req(log, db, socket, src, buf).await });
-
+        tokio::spawn(
+            async move { handle_req(log, db, socket, src, buf).await },
+        );
     }
-
-
 }
 
 async fn handle_req<'a, 'b, 'c>(
     log: Logger,
-    db: Arc::<sled::Db>,
-    socket: Arc::<UdpSocket>,
+    db: Arc<sled::Db>,
+    socket: Arc<UdpSocket>,
     src: SocketAddr,
     buf: Vec<u8>,
 ) {
-
     println!("{:?}", buf.hex_dump());
 
     let mut dec = BinDecoder::new(&buf);
@@ -100,18 +99,12 @@ async fn handle_req<'a, 'b, 'c>(
                 .set_rr_type(RecordType::AAAA)
                 .set_data(Some(RData::AAAA(addr)));
 
-            let mresp = rb.build(
-                header,
-                vec![&aaaa],
-                vec![],
-                vec![],
-                vec![],
-            );
+            let mresp = rb.build(header, vec![&aaaa], vec![], vec![], vec![]);
 
             let mut resp_data = Vec::new();
             let mut enc = BinEncoder::new(&mut resp_data);
             match mresp.destructive_emit(&mut enc) {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => {
                     error!(log, "destructive emit: {}", e);
                     nack(&log, &mr, &socket, &header, &src).await;
@@ -119,10 +112,9 @@ async fn handle_req<'a, 'b, 'c>(
                 }
             }
             match socket.send_to(&resp_data, &src).await {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => {
                     error!(log, "send: {}", e);
-                    return;
                 }
             }
         }
@@ -138,22 +130,14 @@ async fn handle_req<'a, 'b, 'c>(
             };
             srv.set_name(name)
                 .set_rr_type(RecordType::SRV)
-                .set_data(
-                    Some(RData::SRV(SRV::new(prio, weight, port, tgt)))
-                );
+                .set_data(Some(RData::SRV(SRV::new(prio, weight, port, tgt))));
 
-            let mresp = rb.build(
-                header,
-                vec![&srv],
-                vec![],
-                vec![],
-                vec![],
-            );
+            let mresp = rb.build(header, vec![&srv], vec![], vec![], vec![]);
 
             let mut resp_data = Vec::new();
             let mut enc = BinEncoder::new(&mut resp_data);
             match mresp.destructive_emit(&mut enc) {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => {
                     error!(log, "destructive emit: {}", e);
                     nack(&log, &mr, &socket, &header, &src).await;
@@ -161,10 +145,9 @@ async fn handle_req<'a, 'b, 'c>(
                 }
             }
             match socket.send_to(&resp_data, &src).await {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => {
                     error!(log, "send: {}", e);
-                    return;
                 }
             }
         }
@@ -178,7 +161,7 @@ async fn nack(
     header: &Header,
     src: &SocketAddr,
 ) {
-    let rb = MessageResponseBuilder::from_message_request(&mr);
+    let rb = MessageResponseBuilder::from_message_request(mr);
     let mresp = rb.build_no_records(*header);
     let mut resp_data = Vec::new();
     let mut enc = BinEncoder::new(&mut resp_data);
@@ -193,8 +176,6 @@ async fn nack(
         Ok(_) => {}
         Err(e) => {
             error!(log, "destructive emit: {}", e);
-            return;
         }
     }
-
 }

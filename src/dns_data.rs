@@ -1,9 +1,9 @@
 //! Manages DNS data (configured zone(s), records, etc.)
 
 use anyhow::Context;
-use serde::{Serialize, Deserialize};
 use schemars::JsonSchema;
-use slog::{info, o, trace, error};
+use serde::{Deserialize, Serialize};
+use slog::{error, info, o, trace};
 use std::net::Ipv6Addr;
 use std::sync::Arc;
 
@@ -11,7 +11,10 @@ use std::sync::Arc;
 #[derive(Deserialize, Debug)]
 pub struct Config {
     /// maximum number of channel messages to buffer
-    nmax_messages: usize,
+    pub nmax_messages: usize,
+
+    /// The path for the embedded kv store
+    pub storage_path: String,
 }
 
 /// default maximum number of messages to buffer
@@ -19,11 +22,14 @@ const NMAX_MESSAGES_DEFAULT: usize = 16;
 
 impl Default for Config {
     fn default() -> Self {
-        Config { nmax_messages: NMAX_MESSAGES_DEFAULT }
+        Config {
+            nmax_messages: NMAX_MESSAGES_DEFAULT,
+            storage_path: ".".into(),
+        }
     }
 }
 
-// XXX
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub enum DnsRecord {
     AAAA(Ipv6Addr),
@@ -49,9 +55,9 @@ pub enum DnsCmd {
     // XXX
     // MakeExist(DnsRecord, DnsResponse<()>),
     // MakeGone(DnsRecordKey, DnsResponse<()>),
-    GetRecords(Option<DnsRecordKey>, DnsResponse<Vec<(DnsRecordKey,DnsRecord)>>),
-    SetRecords(Vec<(DnsRecordKey,DnsRecord)>, DnsResponse<()>),
-    DeleteRecords(Vec<DnsRecordKey>, DnsResponse<()>),
+    Get(Option<DnsRecordKey>, DnsResponse<Vec<(DnsRecordKey, DnsRecord)>>),
+    Set(Vec<(DnsRecordKey, DnsRecord)>, DnsResponse<()>),
+    Delete(Vec<DnsRecordKey>, DnsResponse<()>),
 }
 
 /// Data model client
@@ -67,14 +73,14 @@ impl Client {
     pub fn new(
         log: slog::Logger,
         config: &Config,
-        db: Arc::<sled::Db>,
+        db: Arc<sled::Db>,
     ) -> Client {
         let (sender, receiver) =
             tokio::sync::mpsc::channel(config.nmax_messages);
         let server = Server {
             log: log.new(o!("component" => "DataServer")),
             receiver,
-            db
+            db,
         };
         tokio::spawn(async move { data_server(server).await });
         Client { log, sender }
@@ -84,11 +90,11 @@ impl Client {
     pub async fn get_records(
         &self,
         key: Option<DnsRecordKey>,
-    ) -> Result<Vec<(DnsRecordKey,DnsRecord)>, anyhow::Error> {
+    ) -> Result<Vec<(DnsRecordKey, DnsRecord)>, anyhow::Error> {
         slog::trace!(&self.log, "get_records"; "key" => ?key);
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.sender
-            .try_send(DnsCmd::GetRecords(key, DnsResponse { tx }))
+            .try_send(DnsCmd::Get(key, DnsResponse { tx }))
             .context("send message")?;
         rx.await.context("recv response")
     }
@@ -96,12 +102,12 @@ impl Client {
     // XXX error type needs to be rich enough for appropriate HTTP response
     pub async fn set_records(
         &self,
-        records: Vec<(DnsRecordKey,DnsRecord)>,
+        records: Vec<(DnsRecordKey, DnsRecord)>,
     ) -> Result<(), anyhow::Error> {
         slog::trace!(&self.log, "set_records"; "records" => ?records);
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.sender
-            .try_send(DnsCmd::SetRecords(records, DnsResponse { tx }))
+            .try_send(DnsCmd::Set(records, DnsResponse { tx }))
             .context("send message")?;
         rx.await.context("recv response")
     }
@@ -114,7 +120,7 @@ impl Client {
         slog::trace!(&self.log, "delete_records"; "records" => ?records);
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.sender
-            .try_send(DnsCmd::DeleteRecords(records, DnsResponse { tx }))
+            .try_send(DnsCmd::Delete(records, DnsResponse { tx }))
             .context("send message")?;
         rx.await.context("recv response")
     }
@@ -135,13 +141,13 @@ async fn data_server(mut server: Server) {
 
         trace!(log, "rx message"; "message" => ?msg);
         match msg {
-            DnsCmd::GetRecords(key, response) => {
+            DnsCmd::Get(key, response) => {
                 server.cmd_get_records(key, response).await;
             }
-            DnsCmd::SetRecords(records, response) => {
+            DnsCmd::Set(records, response) => {
                 server.cmd_set_records(records, response).await;
             }
-            DnsCmd::DeleteRecords(records, response) => {
+            DnsCmd::Delete(records, response) => {
                 server.cmd_delete_records(records, response).await;
             }
         }
@@ -152,7 +158,7 @@ async fn data_server(mut server: Server) {
 pub struct Server {
     log: slog::Logger,
     receiver: tokio::sync::mpsc::Receiver<DnsCmd>,
-    db: Arc::<sled::Db>,
+    db: Arc<sled::Db>,
 }
 
 impl Server {
@@ -161,11 +167,10 @@ impl Server {
         key: Option<DnsRecordKey>,
         response: DnsResponse<Vec<(DnsRecordKey, DnsRecord)>>,
     ) {
-
         // If a key is provided search just for that key. Otherwise return all
         // the db entries.
         if let Some(key) = key {
-            let bits = match self.db.get(key.name.as_bytes()){
+            let bits = match self.db.get(key.name.as_bytes()) {
                 Ok(Some(bits)) => bits,
                 _ => {
                     match response.tx.send(Vec::new()) {
@@ -177,21 +182,21 @@ impl Server {
                     return;
                 }
             };
-            let record: DnsRecord =
-                match serde_json::from_slice(bits.as_ref()) {
-                    Ok(r) => r,
-                    Err(e) => {
-                        error!(self.log, "deserialize record: {}", e);
-                        match response.tx.send(Vec::new()) {
-                            Ok(_) => {}
-                            Err(e) => {
-                                error!(self.log, "response tx: {:?}", e);
-                            }
+            let record: DnsRecord = match serde_json::from_slice(bits.as_ref())
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    error!(self.log, "deserialize record: {}", e);
+                    match response.tx.send(Vec::new()) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            error!(self.log, "response tx: {:?}", e);
                         }
-                        return;
                     }
-                };
-            match response.tx.send(vec![(key,record)]) {
+                    return;
+                }
+            };
+            match response.tx.send(vec![(key, record)]) {
                 Ok(_) => {}
                 Err(e) => {
                     error!(self.log, "response tx: {:?}", e);
@@ -202,16 +207,22 @@ impl Server {
             let mut iter = self.db.iter();
             loop {
                 match iter.next() {
-                    Some(Ok((k,v))) => {
+                    Some(Ok((k, v))) => {
                         let record: DnsRecord =
                             match serde_json::from_slice(v.as_ref()) {
                                 Ok(r) => r,
                                 Err(e) => {
-                                    error!(self.log, "deserialize record: {}", e);
+                                    error!(
+                                        self.log,
+                                        "deserialize record: {}", e
+                                    );
                                     match response.tx.send(Vec::new()) {
                                         Ok(_) => {}
                                         Err(e) => {
-                                            error!(self.log, "response tx: {:?}", e);
+                                            error!(
+                                                self.log,
+                                                "response tx: {:?}", e
+                                            );
                                         }
                                     }
                                     return;
@@ -224,13 +235,16 @@ impl Server {
                                 match response.tx.send(Vec::new()) {
                                     Ok(_) => {}
                                     Err(e) => {
-                                        error!(self.log, "response tx: {:?}", e);
+                                        error!(
+                                            self.log,
+                                            "response tx: {:?}", e
+                                        );
                                     }
                                 }
                                 return;
                             }
                         };
-                        result.push((DnsRecordKey{name: key}, record));
+                        result.push((DnsRecordKey { name: key }, record));
                     }
                     Some(Err(e)) => {
                         error!(self.log, "db iteration error: {}", e);
@@ -250,10 +264,10 @@ impl Server {
 
     async fn cmd_set_records(
         &self,
-        records: Vec<(DnsRecordKey,DnsRecord)>,
+        records: Vec<(DnsRecordKey, DnsRecord)>,
         response: DnsResponse<()>,
     ) {
-        for (k,v) in records {
+        for (k, v) in records {
             let bits = match serde_json::to_string(&v) {
                 Ok(bits) => bits,
                 Err(e) => {

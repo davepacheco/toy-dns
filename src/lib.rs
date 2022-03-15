@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity)]
+
 use anyhow::Context;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -11,12 +13,13 @@ pub struct Config {
     pub log: dropshot::ConfigLogging,
     pub dropshot: dropshot::ConfigDropshot,
     pub data: dns_data::Config,
+    pub dns: dns_server::Config,
 }
 
 pub async fn start_server(
     config: Config,
     log: slog::Logger,
-    db: Arc::<sled::Db>,
+    db: Arc<sled::Db>,
 ) -> Result<dropshot::HttpServer<Arc<dropshot_server::Context>>, anyhow::Error>
 {
     let data_client = dns_data::Client::new(

@@ -2,6 +2,9 @@
 bind_address = "127.0.0.1:5353"
 request_body_max_bytes = 1048576
 
+[dns]
+bind_address = "127.0.0.1:4753"
+
 [log]
 # Show log messages of this level and more severe
 level = "debug"
@@ -16,3 +19,4 @@ mode = "stderr-terminal"
 
 [data]
 nmax_messages = 16
+storage_path = "/tmp/dns"
