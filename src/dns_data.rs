@@ -29,11 +29,19 @@ impl Default for Config {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SRV {
+    pub prio: u16,
+    pub weight: u16,
+    pub port: u16,
+    pub target: String,
+}
+
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub enum DnsRecord {
     AAAA(Ipv6Addr),
-    SRV(u16, u16, u16, String),
+    SRV(SRV),
 }
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct DnsRecordKey {
@@ -42,6 +50,12 @@ pub struct DnsRecordKey {
 #[derive(Debug)]
 pub struct DnsResponse<T> {
     tx: tokio::sync::oneshot::Sender<T>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct DnsKV {
+    key: DnsRecordKey,
+    record: DnsRecord,
 }
 
 // XXX some refactors to help
@@ -55,8 +69,8 @@ pub enum DnsCmd {
     // XXX
     // MakeExist(DnsRecord, DnsResponse<()>),
     // MakeGone(DnsRecordKey, DnsResponse<()>),
-    Get(Option<DnsRecordKey>, DnsResponse<Vec<(DnsRecordKey, DnsRecord)>>),
-    Set(Vec<(DnsRecordKey, DnsRecord)>, DnsResponse<()>),
+    Get(Option<DnsRecordKey>, DnsResponse<Vec<DnsKV>>),
+    Set(Vec<DnsKV>, DnsResponse<()>),
     Delete(Vec<DnsRecordKey>, DnsResponse<()>),
 }
 
@@ -90,7 +104,7 @@ impl Client {
     pub async fn get_records(
         &self,
         key: Option<DnsRecordKey>,
-    ) -> Result<Vec<(DnsRecordKey, DnsRecord)>, anyhow::Error> {
+    ) -> Result<Vec<DnsKV>, anyhow::Error> {
         slog::trace!(&self.log, "get_records"; "key" => ?key);
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.sender
@@ -102,7 +116,7 @@ impl Client {
     // XXX error type needs to be rich enough for appropriate HTTP response
     pub async fn set_records(
         &self,
-        records: Vec<(DnsRecordKey, DnsRecord)>,
+        records: Vec<DnsKV>,
     ) -> Result<(), anyhow::Error> {
         slog::trace!(&self.log, "set_records"; "records" => ?records);
         let (tx, rx) = tokio::sync::oneshot::channel();
@@ -165,7 +179,7 @@ impl Server {
     async fn cmd_get_records(
         &self,
         key: Option<DnsRecordKey>,
-        response: DnsResponse<Vec<(DnsRecordKey, DnsRecord)>>,
+        response: DnsResponse<Vec<DnsKV>>,
     ) {
         // If a key is provided search just for that key. Otherwise return all
         // the db entries.
@@ -196,7 +210,7 @@ impl Server {
                     return;
                 }
             };
-            match response.tx.send(vec![(key, record)]) {
+            match response.tx.send(vec![DnsKV{key, record}]) {
                 Ok(_) => {}
                 Err(e) => {
                     error!(self.log, "response tx: {:?}", e);
@@ -244,7 +258,10 @@ impl Server {
                                 return;
                             }
                         };
-                        result.push((DnsRecordKey { name: key }, record));
+                        result.push(DnsKV{
+                            key: DnsRecordKey { name: key },
+                            record,
+                        });
                     }
                     Some(Err(e)) => {
                         error!(self.log, "db iteration error: {}", e);
@@ -264,11 +281,11 @@ impl Server {
 
     async fn cmd_set_records(
         &self,
-        records: Vec<(DnsRecordKey, DnsRecord)>,
+        records: Vec<DnsKV>,
         response: DnsResponse<()>,
     ) {
-        for (k, v) in records {
-            let bits = match serde_json::to_string(&v) {
+        for kv in records {
+            let bits = match serde_json::to_string(&kv.record) {
                 Ok(bits) => bits,
                 Err(e) => {
                     error!(self.log, "serialize record: {}", e);
@@ -281,7 +298,7 @@ impl Server {
                     return;
                 }
             };
-            match self.db.insert(k.name.as_bytes(), bits.as_bytes()) {
+            match self.db.insert(kv.key.name.as_bytes(), bits.as_bytes()) {
                 Ok(_) => {}
                 Err(e) => {
                     error!(self.log, "db insert: {}", e);

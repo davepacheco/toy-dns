@@ -1,6 +1,6 @@
 //! Dropshot server for configuring DNS namespace
 
-use crate::dns_data::{self, DnsRecord, DnsRecordKey};
+use crate::dns_data::{self, DnsRecordKey, DnsKV};
 use dropshot::endpoint;
 use std::sync::Arc;
 
@@ -30,7 +30,7 @@ pub fn api() -> dropshot::ApiDescription<Arc<Context>> {
 async fn dns_records_get(
     rqctx: Arc<dropshot::RequestContext<Arc<Context>>>,
 ) -> Result<
-    dropshot::HttpResponseOk<Vec<(DnsRecordKey, DnsRecord)>>,
+    dropshot::HttpResponseOk<Vec<DnsKV>>,
     dropshot::HttpError,
 > {
     let apictx = rqctx.context();
@@ -47,7 +47,7 @@ async fn dns_records_get(
 )]
 async fn dns_records_set(
     rqctx: Arc<dropshot::RequestContext<Arc<Context>>>,
-    rq: dropshot::TypedBody<Vec<(DnsRecordKey, DnsRecord)>>,
+    rq: dropshot::TypedBody<Vec<DnsKV>>,
 ) -> Result<dropshot::HttpResponseOk<()>, dropshot::HttpError> {
     let apictx = rqctx.context();
     apictx.client.set_records(rq.into_inner()).await.map_err(|e| {
