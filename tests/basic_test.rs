@@ -1,15 +1,19 @@
 use std::sync::Arc;
+use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr};
+
 use anyhow::{Context, Result, anyhow};
 use toy_dns::client::{
     types::{DnsKv, DnsRecordKey, DnsRecord, Srv},
     Client
 };
 use std::net::Ipv6Addr;
+use trust_dns_resolver::TokioAsyncResolver;
+use trust_dns_resolver::config::{ResolverConfig, ResolverOpts, Protocol, NameServerConfig};
 
 #[tokio::test]
 pub async fn aaaa_crud() -> Result<(), anyhow::Error> {
 
-    let client = init_client_server().await?;
+    let (client, resolver) = init_client_server().await?;
 
     // records should initially be empty
     let records = client.dns_records_get().await?;
@@ -37,6 +41,11 @@ pub async fn aaaa_crud() -> Result<(), anyhow::Error> {
         }
     }
 
+    // resolve the name
+    let response = resolver.lookup_ip(name.name+".").await?;
+    let address = response.iter().next().expect("no addresses returned!");
+    assert_eq!(address, addr);
+
     Ok(())
 
 }
@@ -44,7 +53,7 @@ pub async fn aaaa_crud() -> Result<(), anyhow::Error> {
 #[tokio::test]
 pub async fn srv_crud() -> Result<(), anyhow::Error> {
 
-    let client = init_client_server().await?;
+    let (client, resolver) = init_client_server().await?;
 
     // records should initially be empty
     let records = client.dns_records_get().await?;
@@ -75,15 +84,23 @@ pub async fn srv_crud() -> Result<(), anyhow::Error> {
         }
     }
 
+    // resolve the srv
+    let response = resolver.srv_lookup(name.name).await?;
+    let srvr = response.iter().next().expect("no addresses returned!");
+    assert_eq!(srvr.priority(), srv.prio);
+    assert_eq!(srvr.weight(), srv.weight);
+    assert_eq!(srvr.port(), srv.port);
+    assert_eq!(srvr.target().to_string(), srv.target+".");
+
     Ok(())
 
 }
 
 async fn init_client_server()
--> Result<Client, anyhow::Error> {
+-> Result<(Client, TokioAsyncResolver), anyhow::Error> {
 
     // initialize dns server config
-    let (config, dropshot_port, _dns_port) = test_config()?;
+    let (config, dropshot_port, dns_port) = test_config()?;
     let log =
         config.log.to_logger("toy-dns").context("failed to create logger")?;
 
@@ -93,7 +110,29 @@ async fn init_client_server()
 
     let client = Client::new(&format!("http://127.0.0.1:{}", dropshot_port), log.clone());
 
+    let mut rc = ResolverConfig::new();
+    rc.add_name_server(NameServerConfig{
+        socket_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127,0,0,1), dns_port)),
+        protocol: Protocol::Udp,
+        tls_dns_name: None,
+        trust_nx_responses: false,
+        bind_addr: None,
+    });
+
+    let resolver = TokioAsyncResolver::tokio(rc, ResolverOpts::default()).unwrap();
+
     // launch a dns server
+    {
+        let db = db.clone();
+        let log = log.clone();
+        let config = config.dns.clone();
+
+        tokio::spawn(
+            async move { toy_dns::dns_server::run(log, db, config).await },
+        );
+    }
+
+    // launch a dropshot server
     tokio::spawn(async move {
         let server = toy_dns::start_server(config, log, db).await?;
         server
@@ -104,7 +143,7 @@ async fn init_client_server()
     // wait for server to start
     tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
 
-    Ok(client)
+    Ok((client, resolver))
 }
 
 fn test_config() -> Result<(toy_dns::Config, u16, u16), anyhow::Error> {
