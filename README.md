@@ -7,45 +7,45 @@ A minimal prototype for DNS functionality identified in RFD 248.
 Run the server
 
 ```
-cargo run -- --config-file example-config.toml
+cargo run --bin toy-dns-server -- --config-file example-config.toml
 ```
 
 Add some records
 
 ```shell
 # AAAA
-./scripts/add-aaaa.sh pizza fd00::1701
+./target/debug/toyadm add-aaaa pizza fd00::1701
 
 # SRV
-./scripts/add-srv.sh blueberry 47 47 47 muffin
+./target/debug/toyadm add-srv blueberry 47 47 47 muffin
 ```
 
 View records through admin interface
 
 ```shell
-curl -s localhost:5353/get-records | jq
+./target/debug/toyadm list-records
 [
-  [
-    {
-      "name": "blueberry"
+    DnsKv {
+        key: DnsRecordKey {
+            name: "blueberry",
+        },
+        record: Srv(
+            Srv {
+                port: 47,
+                prio: 47,
+                target: "muffin",
+                weight: 47,
+            },
+        ),
     },
-    {
-      "SRV": [
-        47,
-        47,
-        47,
-        "muffin"
-      ]
-    }
-  ],
-  [
-    {
-      "name": "pizza"
+    DnsKv {
+        key: DnsRecordKey {
+            name: "pizza",
+        },
+        record: Aaaa(
+            fd00::1701,
+        ),
     },
-    {
-      "AAAA": "fd00::1701"
-    }
-  ]
 ]
 ```
 
