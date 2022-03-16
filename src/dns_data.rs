@@ -29,7 +29,7 @@ impl Default for Config {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct SRV {
     pub prio: u16,
     pub weight: u16,
@@ -38,12 +38,12 @@ pub struct SRV {
 }
 
 #[allow(clippy::upper_case_acronyms)]
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub enum DnsRecord {
     AAAA(Ipv6Addr),
     SRV(SRV),
 }
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct DnsRecordKey {
     name: String,
 }
