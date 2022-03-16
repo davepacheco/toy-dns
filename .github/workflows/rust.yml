@@ -1,0 +1,56 @@
+name: Rust
+
+on: [ push, pull_request ]
+
+jobs:
+  check-style:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Report cargo version
+      run: cargo --version
+
+    - name: Report rustfmt version
+      run: cargo fmt -- --version
+
+    - name: Check style
+      run: cargo fmt -- --check
+
+  clippy-lint:
+    needs: skip_duplicate_jobs
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Report cargo version
+      run: cargo --version
+
+    - name: Report Clippy version
+      run: cargo clippy -- --version
+
+    - name: Run Clippy Lints
+      run: cargo clippy
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Report cargo version
+      run: cargo --version
+
+    - name: Build
+      run: cargo build
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Report cargo version
+      run: cargo --version
+
+    - name: Test
+      run: cargo test
+

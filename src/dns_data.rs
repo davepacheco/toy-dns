@@ -210,7 +210,7 @@ impl Server {
                     return;
                 }
             };
-            match response.tx.send(vec![DnsKV{key, record}]) {
+            match response.tx.send(vec![DnsKV { key, record }]) {
                 Ok(_) => {}
                 Err(e) => {
                     error!(self.log, "response tx: {:?}", e);
@@ -258,7 +258,7 @@ impl Server {
                                 return;
                             }
                         };
-                        result.push(DnsKV{
+                        result.push(DnsKV {
                             key: DnsRecordKey { name: key },
                             record,
                         });

@@ -1,13 +1,10 @@
-use structopt::{
-    StructOpt,
-    clap::AppSettings::*,
-};
-use slog::{Logger, Drain};
 use anyhow::Result;
+use slog::{Drain, Logger};
 use std::net::Ipv6Addr;
+use structopt::{clap::AppSettings::*, StructOpt};
 use toy_dns::client::{
-    types::{DnsKv, DnsRecordKey, DnsRecord, Srv},
-    Client
+    types::{DnsKv, DnsRecord, DnsRecordKey, Srv},
+    Client,
 };
 
 #[derive(Debug, StructOpt)]
@@ -15,7 +12,7 @@ use toy_dns::client::{
     name = "toyadm",
     about = "Administer toys and their names",
     global_setting(ColorAuto),
-    global_setting(ColoredHelp),
+    global_setting(ColoredHelp)
 )]
 struct Opt {
     #[structopt(short, long)]
@@ -25,7 +22,7 @@ struct Opt {
     port: Option<usize>,
 
     #[structopt(subcommand)]
-    subcommand: SubCommand
+    subcommand: SubCommand,
 }
 
 #[derive(Debug, StructOpt)]
@@ -58,7 +55,6 @@ struct DeleteRecordCommand {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-
     let opt = Opt::from_args();
     let log = init_logger();
 
@@ -66,10 +62,7 @@ async fn main() -> Result<()> {
         Some(a) => a,
         None => "localhost".into(),
     };
-    let port = match opt.port {
-        Some(p) => p,
-        None => 5353,
-    };
+    let port = opt.port.unwrap_or(5353);
 
     let endpoint = format!("http://{}:{}", addr, port);
     let client = Client::new(&endpoint, log.clone());
@@ -81,37 +74,40 @@ async fn main() -> Result<()> {
             println!("{:#?}", records);
         }
         SubCommand::AddAAAA(cmd) => {
-            client.dns_records_set(&vec![DnsKv{
-                key: DnsRecordKey{ name: cmd.name },
-                record: DnsRecord::Aaaa(cmd.addr),
-            }]).await?;
+            client
+                .dns_records_set(&vec![DnsKv {
+                    key: DnsRecordKey { name: cmd.name },
+                    record: DnsRecord::Aaaa(cmd.addr),
+                }])
+                .await?;
         }
         SubCommand::AddSRV(cmd) => {
-            client.dns_records_set(&vec![DnsKv{
-                key: DnsRecordKey{ name: cmd.name },
-                record: DnsRecord::Srv(Srv{
-                    prio: cmd.prio,
-                    weight: cmd.weight,
-                    port: cmd.port,
-                    target: cmd.target,
-                }),
-            }]).await?;
+            client
+                .dns_records_set(&vec![DnsKv {
+                    key: DnsRecordKey { name: cmd.name },
+                    record: DnsRecord::Srv(Srv {
+                        prio: cmd.prio,
+                        weight: cmd.weight,
+                        port: cmd.port,
+                        target: cmd.target,
+                    }),
+                }])
+                .await?;
         }
         SubCommand::DeleteRecord(cmd) => {
-            client.dns_records_delete(&vec![DnsRecordKey{name: cmd.name}]).await?;
+            client
+                .dns_records_delete(&vec![DnsRecordKey { name: cmd.name }])
+                .await?;
         }
     }
 
     Ok(())
-
 }
 
 fn init_logger() -> Logger {
-
     let decorator = slog_term::TermDecorator::new().build();
     let drain = slog_term::FullFormat::new(decorator).build().fuse();
     let drain = slog_envlogger::new(drain).fuse();
     let drain = slog_async::Async::new(drain).chan_size(0x2000).build().fuse();
     slog::Logger::root(drain, slog::o!())
-
 }

@@ -118,7 +118,7 @@ async fn handle_req<'a, 'b, 'c>(
                 }
             }
         }
-        DnsRecord::SRV(crate::dns_data::SRV{prio, weight, port, target}) => {
+        DnsRecord::SRV(crate::dns_data::SRV { prio, weight, port, target }) => {
             let mut srv = Record::new();
             let tgt = match Name::from_str(&target) {
                 Ok(tgt) => tgt,
