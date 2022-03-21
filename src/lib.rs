@@ -1,10 +1,12 @@
 #![allow(clippy::type_complexity)]
+#![allow(clippy::ptr_arg)]
 
-use anyhow::Context;
+use anyhow::anyhow;
 use serde::Deserialize;
 use std::sync::Arc;
 
-mod dns_data;
+pub mod client;
+pub mod dns_data;
 pub mod dns_server;
 pub mod dropshot_server;
 
@@ -37,6 +39,6 @@ pub async fn start_server(
         api_context,
         &log,
     )
-    .context("init dropshot")?
+    .map_err(|e| anyhow!("{}", e))?
     .start())
 }

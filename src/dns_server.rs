@@ -22,7 +22,7 @@ use trust_dns_server::authority::{MessageRequest, MessageResponseBuilder};
 #[derive(Deserialize, Debug, Clone)]
 pub struct Config {
     /// The address to listen for DNS requests on
-    bind_address: String,
+    pub bind_address: String,
 }
 
 pub async fn run(log: Logger, db: Arc<sled::Db>, config: Config) -> Result<()> {
@@ -118,7 +118,7 @@ async fn handle_req<'a, 'b, 'c>(
                 }
             }
         }
-        DnsRecord::SRV(prio, weight, port, target) => {
+        DnsRecord::SRV(crate::dns_data::SRV { prio, weight, port, target }) => {
             let mut srv = Record::new();
             let tgt = match Name::from_str(&target) {
                 Ok(tgt) => tgt,
